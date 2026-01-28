@@ -11,229 +11,200 @@ const DEFAULT_OPTIONS = [
     '漢堡', '鹹酥雞', '水餃', '麻辣燙', '燒烤'
 ];
 
-// ============== 狀態 ==============
+// ============== 全域變數 ==============
 let options = [];
 let editingIndex = -1;
 let isAnimating = false;
-let capsuleBodies = [];
+
+// Three.js
+let scene, camera, renderer;
 let capsuleMeshes = [];
 let droppedCapsule = null;
-let droppedCapsuleBody = null;
 let selectedResult = null;
 
-// ============== Three.js ==============
-let scene, camera, renderer, controls;
-let machine, glassDome;
-
-// ============== Cannon.js ==============
+// Cannon.js
 let world;
-let machineBodies = [];
+let capsuleBodies = [];
+let droppedCapsuleBody = null;
+let groundBody, bowlBody;
 
 // ============== 初始化 ==============
-function init() {
-    loadOptions();
-    setupThree();
-    setupCannon();
-    createMachine();
-    createGround();
-    fillCapsules();
-    setupEventListeners();
-    renderOptionsList();
-    animate();
-}
+document.addEventListener('DOMContentLoaded', () => {
+    try {
+        loadOptions();
+        initThree();
+        initCannon();
+        createScene();
+        fillCapsules();
+        setupUI();
+        animate();
+        console.log('初始化完成');
+    } catch (e) {
+        console.error('初始化錯誤:', e);
+        alert('載入錯誤: ' + e.message);
+    }
+});
 
-// ============== Three.js 設定 ==============
-function setupThree() {
+// ============== Three.js 初始化 ==============
+function initThree() {
     const container = document.getElementById('canvas-container');
     
+    // 場景
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x1a1a2e);
     
-    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 3, 8);
-    camera.lookAt(0, 1, 0);
+    // 相機
+    camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 5, 10);
+    camera.lookAt(0, 2, 0);
     
+    // 渲染器
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
     
     // 燈光
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambientLight);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambient);
     
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(5, 10, 5);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 2048;
-    directionalLight.shadow.mapSize.height = 2048;
-    scene.add(directionalLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(5, 10, 5);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
     
-    const pointLight = new THREE.PointLight(0xffe66d, 0.5, 20);
-    pointLight.position.set(-3, 5, 3);
-    scene.add(pointLight);
+    // 視窗調整
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
     
-    window.addEventListener('resize', onWindowResize);
+    // 點擊事件
+    renderer.domElement.addEventListener('click', onCanvasClick);
 }
 
-function onWindowResize() {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-}
-
-// ============== Cannon.js 設定 ==============
-function setupCannon() {
+// ============== Cannon.js 初始化 ==============
+function initCannon() {
     world = new CANNON.World();
-    world.gravity.set(0, -15, 0);
+    world.gravity.set(0, -20, 0);
     world.broadphase = new CANNON.NaiveBroadphase();
     world.solver.iterations = 10;
     
-    // 材質
-    world.defaultContactMaterial.friction = 0.3;
-    world.defaultContactMaterial.restitution = 0.4;
+    // 預設材質
+    const defaultMaterial = new CANNON.Material('default');
+    const contactMaterial = new CANNON.ContactMaterial(defaultMaterial, defaultMaterial, {
+        friction: 0.4,
+        restitution: 0.3
+    });
+    world.addContactMaterial(contactMaterial);
+    world.defaultContactMaterial = contactMaterial;
 }
 
-// ============== 創建扭蛋機 ==============
-function createMachine() {
-    machine = new THREE.Group();
-    
-    // 玻璃球罩 (透明)
-    const domeGeometry = new THREE.SphereGeometry(1.8, 32, 32, 0, Math.PI * 2, 0, Math.PI / 2);
-    const domeMaterial = new THREE.MeshPhysicalMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.3,
-        roughness: 0,
-        metalness: 0,
-        side: THREE.DoubleSide
-    });
-    glassDome = new THREE.Mesh(domeGeometry, domeMaterial);
-    glassDome.position.y = 2.5;
-    glassDome.rotation.x = Math.PI;
-    machine.add(glassDome);
-    
-    // 球罩底座
-    const baseRingGeometry = new THREE.TorusGeometry(1.8, 0.15, 16, 32);
-    const redMaterial = new THREE.MeshStandardMaterial({ color: 0xc0392b });
-    const baseRing = new THREE.Mesh(baseRingGeometry, redMaterial);
-    baseRing.position.y = 2.5;
-    baseRing.rotation.x = Math.PI / 2;
-    machine.add(baseRing);
-    
-    // 機身
-    const bodyGeometry = new THREE.CylinderGeometry(1.9, 2.1, 1.5, 32);
-    const body = new THREE.Mesh(bodyGeometry, redMaterial);
-    body.position.y = 1.5;
-    body.castShadow = true;
-    machine.add(body);
-    
-    // 出口斜坡
-    const rampGeometry = new THREE.BoxGeometry(1, 0.1, 1.5);
-    const rampMaterial = new THREE.MeshStandardMaterial({ color: 0x922b21 });
-    const ramp = new THREE.Mesh(rampGeometry, rampMaterial);
-    ramp.position.set(0, 0.6, 1.8);
-    ramp.rotation.x = 0.3;
-    machine.add(ramp);
-    
-    // 出口洞
-    const holeGeometry = new THREE.CircleGeometry(0.5, 32);
-    const holeMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1a2e });
-    const hole = new THREE.Mesh(holeGeometry, holeMaterial);
-    hole.position.set(0, 0.75, 1.05);
-    hole.rotation.x = -Math.PI / 2 + 0.1;
-    machine.add(hole);
-    
-    // 底座
-    const platformGeometry = new THREE.CylinderGeometry(2.3, 2.5, 0.8, 32);
-    const platform = new THREE.Mesh(platformGeometry, redMaterial);
-    platform.position.y = 0.4;
-    platform.castShadow = true;
-    machine.add(platform);
-    
-    // 按鈕
-    const buttonGeometry = new THREE.CylinderGeometry(0.4, 0.45, 0.2, 32);
-    const buttonMaterial = new THREE.MeshStandardMaterial({ color: 0xf1c40f });
-    const button = new THREE.Mesh(buttonGeometry, buttonMaterial);
-    button.position.set(0, 1.6, 1.95);
-    button.rotation.x = Math.PI / 2;
-    machine.add(button);
-    
-    scene.add(machine);
-    
-    // 物理碗形容器
-    createMachinePhysics();
-}
-
-function createMachinePhysics() {
-    // 碗底
-    const bowlBottom = new CANNON.Body({
-        mass: 0,
-        shape: new CANNON.Sphere(0.3),
-        position: new CANNON.Vec3(0, 2.6, 0)
-    });
-    world.addBody(bowlBottom);
-    machineBodies.push(bowlBottom);
-    
-    // 碗壁 (用多個平面模擬)
-    const wallCount = 16;
-    for (let i = 0; i < wallCount; i++) {
-        const angle = (i / wallCount) * Math.PI * 2;
-        const x = Math.cos(angle) * 1.6;
-        const z = Math.sin(angle) * 1.6;
-        
-        const wall = new CANNON.Body({
-            mass: 0,
-            shape: new CANNON.Box(new CANNON.Vec3(0.4, 1, 0.05)),
-            position: new CANNON.Vec3(x, 3.2, z)
-        });
-        wall.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -angle);
-        world.addBody(wall);
-        machineBodies.push(wall);
-    }
-    
-    // 底板 (有洞)
-    const floorShape = new CANNON.Box(new CANNON.Vec3(1.8, 0.1, 1.8));
-    const floor = new CANNON.Body({
-        mass: 0,
-        shape: floorShape,
-        position: new CANNON.Vec3(0, 2.45, 0)
-    });
-    world.addBody(floor);
-    machineBodies.push(floor);
-}
-
-// ============== 創建地面 ==============
-function createGround() {
-    // 視覺地面
-    const groundGeometry = new THREE.PlaneGeometry(30, 30);
-    const groundMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x2c3e50,
-        roughness: 0.8
-    });
-    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+// ============== 創建場景 ==============
+function createScene() {
+    // === 地面 ===
+    const groundGeo = new THREE.PlaneGeometry(20, 20);
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x2c3e50 });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
-    ground.position.y = 0;
     ground.receiveShadow = true;
     scene.add(ground);
     
-    // 物理地面
-    const groundBody = new CANNON.Body({
-        mass: 0,
-        shape: new CANNON.Plane()
-    });
-    groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+    groundBody = new CANNON.Body({ mass: 0 });
+    groundBody.addShape(new CANNON.Plane());
+    groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
     world.addBody(groundBody);
     
-    // 斜坡物理
-    const rampBody = new CANNON.Body({
-        mass: 0,
-        shape: new CANNON.Box(new CANNON.Vec3(0.5, 0.05, 0.75))
+    // === 扭蛋機 ===
+    const machineGroup = new THREE.Group();
+    
+    // 底座
+    const baseGeo = new THREE.CylinderGeometry(2, 2.2, 1, 32);
+    const redMat = new THREE.MeshStandardMaterial({ color: 0xc0392b });
+    const base = new THREE.Mesh(baseGeo, redMat);
+    base.position.y = 0.5;
+    base.castShadow = true;
+    machineGroup.add(base);
+    
+    // 機身
+    const bodyGeo = new THREE.CylinderGeometry(1.8, 1.9, 1.2, 32);
+    const body = new THREE.Mesh(bodyGeo, redMat);
+    body.position.y = 1.6;
+    body.castShadow = true;
+    machineGroup.add(body);
+    
+    // 玻璃球罩
+    const domeGeo = new THREE.SphereGeometry(1.8, 32, 32, 0, Math.PI * 2, 0, Math.PI * 0.6);
+    const domeMat = new THREE.MeshPhysicalMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.25,
+        roughness: 0,
+        metalness: 0.1,
+        side: THREE.DoubleSide
     });
-    rampBody.position.set(0, 0.6, 1.8);
-    rampBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), 0.3);
+    const dome = new THREE.Mesh(domeGeo, domeMat);
+    dome.position.y = 3.2;
+    dome.rotation.x = Math.PI;
+    machineGroup.add(dome);
+    
+    // 球罩邊框
+    const ringGeo = new THREE.TorusGeometry(1.8, 0.1, 16, 32);
+    const ring = new THREE.Mesh(ringGeo, redMat);
+    ring.position.y = 2.2;
+    ring.rotation.x = Math.PI / 2;
+    machineGroup.add(ring);
+    
+    // 出口斜坡
+    const rampGeo = new THREE.BoxGeometry(1.2, 0.15, 2);
+    const darkRedMat = new THREE.MeshStandardMaterial({ color: 0x922b21 });
+    const ramp = new THREE.Mesh(rampGeo, darkRedMat);
+    ramp.position.set(0, 0.8, 2);
+    ramp.rotation.x = 0.25;
+    machineGroup.add(ramp);
+    
+    // 出口洞口視覺
+    const holeGeo = new THREE.CircleGeometry(0.45, 32);
+    const holeMat = new THREE.MeshBasicMaterial({ color: 0x111122 });
+    const hole = new THREE.Mesh(holeGeo, holeMat);
+    hole.position.set(0, 1.05, 1.02);
+    hole.rotation.x = -0.1;
+    machineGroup.add(hole);
+    
+    // 按鈕裝飾
+    const btnGeo = new THREE.CylinderGeometry(0.35, 0.4, 0.15, 32);
+    const btnMat = new THREE.MeshStandardMaterial({ color: 0xf1c40f });
+    const btn = new THREE.Mesh(btnGeo, btnMat);
+    btn.position.set(0, 1.7, 1.85);
+    btn.rotation.x = Math.PI / 2;
+    machineGroup.add(btn);
+    
+    scene.add(machineGroup);
+    
+    // === 物理碗 (容納扭蛋) ===
+    // 碗底
+    const bowlFloor = new CANNON.Body({ mass: 0 });
+    bowlFloor.addShape(new CANNON.Box(new CANNON.Vec3(1.5, 0.1, 1.5)));
+    bowlFloor.position.set(0, 2.25, 0);
+    world.addBody(bowlFloor);
+    
+    // 碗壁 (圓形排列)
+    for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2;
+        const wallBody = new CANNON.Body({ mass: 0 });
+        wallBody.addShape(new CANNON.Box(new CANNON.Vec3(0.5, 0.8, 0.1)));
+        wallBody.position.set(Math.cos(angle) * 1.5, 3.0, Math.sin(angle) * 1.5);
+        wallBody.quaternion.setFromEuler(0, -angle, 0);
+        world.addBody(wallBody);
+    }
+    
+    // 斜坡物理
+    const rampBody = new CANNON.Body({ mass: 0 });
+    rampBody.addShape(new CANNON.Box(new CANNON.Vec3(0.6, 0.08, 1)));
+    rampBody.position.set(0, 0.75, 2);
+    rampBody.quaternion.setFromEuler(0.25, 0, 0);
     world.addBody(rampBody);
 }
 
@@ -241,63 +212,65 @@ function createGround() {
 function createCapsule(x, y, z, colorIndex) {
     const color = CAPSULE_COLORS[colorIndex % CAPSULE_COLORS.length];
     
-    // 視覺 - 扭蛋 (兩個半球)
-    const capsuleGroup = new THREE.Group();
+    // Three.js 視覺
+    const group = new THREE.Group();
     
-    const topGeometry = new THREE.SphereGeometry(0.25, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-    const topMaterial = new THREE.MeshStandardMaterial({ color: color });
-    const top = new THREE.Mesh(topGeometry, topMaterial);
+    // 上半球 (彩色)
+    const topGeo = new THREE.SphereGeometry(0.28, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+    const topMat = new THREE.MeshStandardMaterial({ color: color });
+    const top = new THREE.Mesh(topGeo, topMat);
     top.rotation.x = Math.PI;
-    top.position.y = 0.02;
-    capsuleGroup.add(top);
+    top.position.y = 0.03;
+    group.add(top);
     
-    const bottomGeometry = new THREE.SphereGeometry(0.25, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-    const bottomMaterial = new THREE.MeshStandardMaterial({ color: 0xf5f5f5 });
-    const bottom = new THREE.Mesh(bottomGeometry, bottomMaterial);
-    bottom.position.y = -0.02;
-    capsuleGroup.add(bottom);
+    // 下半球 (白色)
+    const botGeo = new THREE.SphereGeometry(0.28, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+    const botMat = new THREE.MeshStandardMaterial({ color: 0xf0f0f0 });
+    const bot = new THREE.Mesh(botGeo, botMat);
+    bot.position.y = -0.03;
+    group.add(bot);
     
     // 中間線
-    const ringGeometry = new THREE.TorusGeometry(0.25, 0.02, 8, 32);
-    const ringMaterial = new THREE.MeshStandardMaterial({ color: 0xcccccc });
-    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-    ring.rotation.x = Math.PI / 2;
-    capsuleGroup.add(ring);
+    const lineGeo = new THREE.TorusGeometry(0.28, 0.025, 8, 32);
+    const lineMat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
+    const line = new THREE.Mesh(lineGeo, lineMat);
+    line.rotation.x = Math.PI / 2;
+    group.add(line);
     
-    capsuleGroup.position.set(x, y, z);
-    capsuleGroup.castShadow = true;
-    capsuleGroup.userData = { colorIndex: colorIndex };
-    scene.add(capsuleGroup);
+    group.position.set(x, y, z);
+    group.castShadow = true;
+    group.userData = { colorIndex, color };
+    scene.add(group);
     
-    // 物理
-    const capsuleBody = new CANNON.Body({
+    // Cannon.js 物理
+    const body = new CANNON.Body({
         mass: 1,
-        shape: new CANNON.Sphere(0.25),
+        shape: new CANNON.Sphere(0.28),
         position: new CANNON.Vec3(x, y, z),
         linearDamping: 0.3,
-        angularDamping: 0.3
+        angularDamping: 0.5
     });
-    world.addBody(capsuleBody);
+    world.addBody(body);
     
-    return { mesh: capsuleGroup, body: capsuleBody };
+    return { mesh: group, body };
 }
 
 // ============== 填充扭蛋 ==============
 function fillCapsules() {
-    // 清除現有扭蛋
-    capsuleMeshes.forEach(mesh => scene.remove(mesh));
-    capsuleBodies.forEach(body => world.removeBody(body));
+    // 清除舊的
+    capsuleMeshes.forEach(m => scene.remove(m));
+    capsuleBodies.forEach(b => world.removeBody(b));
     capsuleMeshes = [];
     capsuleBodies = [];
     
-    // 填充新扭蛋
-    const count = Math.min(options.length, 15);
+    // 新增扭蛋
+    const count = Math.min(options.length, 12);
     for (let i = 0; i < count; i++) {
         const angle = Math.random() * Math.PI * 2;
-        const radius = Math.random() * 1.2;
-        const x = Math.cos(angle) * radius;
-        const z = Math.sin(angle) * radius;
-        const y = 3.5 + Math.random() * 1.5;
+        const r = Math.random() * 0.8;
+        const x = Math.cos(angle) * r;
+        const z = Math.sin(angle) * r;
+        const y = 3.5 + i * 0.6;
         
         const { mesh, body } = createCapsule(x, y, z, i);
         capsuleMeshes.push(mesh);
@@ -307,17 +280,16 @@ function fillCapsules() {
     updateHint();
 }
 
-// ============== 扭蛋！ ==============
+// ============== 扭蛋動作 ==============
 function pullGacha() {
-    if (isAnimating || capsuleMeshes.length === 0) {
-        if (capsuleMeshes.length === 0) {
-            document.getElementById('hint').textContent = '扭蛋機空了！請補充扭蛋';
-        }
+    if (isAnimating) return;
+    
+    if (capsuleMeshes.length === 0) {
+        document.getElementById('hint').textContent = '扭蛋機空了！請點設定補充';
         return;
     }
     
     if (options.length === 0) {
-        alert('請先新增一些選項！');
         document.getElementById('settingsPanel').classList.add('show');
         return;
     }
@@ -326,101 +298,91 @@ function pullGacha() {
     document.getElementById('gachaBtn').disabled = true;
     document.getElementById('hint').textContent = '扭蛋中...';
     
-    // 隨機選一顆扭蛋
-    const randomIndex = Math.floor(Math.random() * capsuleMeshes.length);
-    const selectedMesh = capsuleMeshes[randomIndex];
-    const selectedBody = capsuleBodies[randomIndex];
-    
-    // 記錄結果
-    const optionIndex = selectedMesh.userData.colorIndex % options.length;
-    selectedResult = options[optionIndex];
-    
-    // 從陣列移除
-    capsuleMeshes.splice(randomIndex, 1);
-    capsuleBodies.splice(randomIndex, 1);
-    
-    // 搖晃其他扭蛋
-    capsuleBodies.forEach(body => {
-        body.applyImpulse(
-            new CANNON.Vec3((Math.random() - 0.5) * 5, 3, (Math.random() - 0.5) * 5),
-            body.position
+    // 搖晃所有扭蛋
+    capsuleBodies.forEach(b => {
+        b.applyImpulse(
+            new CANNON.Vec3((Math.random() - 0.5) * 8, 5, (Math.random() - 0.5) * 8),
+            b.position
         );
     });
     
-    // 把選中的扭蛋移到出口
+    // 選一顆扭蛋
     setTimeout(() => {
-        // 移除物理約束，讓它掉出來
-        world.removeBody(selectedBody);
+        const idx = Math.floor(Math.random() * capsuleMeshes.length);
+        const mesh = capsuleMeshes.splice(idx, 1)[0];
+        const body = capsuleBodies.splice(idx, 1)[0];
         
-        // 創建新的物理體在出口位置
+        // 決定結果
+        const optIdx = mesh.userData.colorIndex % options.length;
+        selectedResult = options[optIdx];
+        
+        // 移除物理並重新創建在出口
+        world.removeBody(body);
+        
         droppedCapsuleBody = new CANNON.Body({
             mass: 1,
-            shape: new CANNON.Sphere(0.25),
-            position: new CANNON.Vec3(0, 1.2, 1.5),
+            shape: new CANNON.Sphere(0.28),
+            position: new CANNON.Vec3(0, 1.3, 1.5),
             linearDamping: 0.4,
-            angularDamping: 0.4
+            angularDamping: 0.5
         });
-        droppedCapsuleBody.velocity.set(0, -2, 3);
+        droppedCapsuleBody.velocity.set((Math.random() - 0.5) * 2, -1, 4);
         world.addBody(droppedCapsuleBody);
         
-        droppedCapsule = selectedMesh;
-        droppedCapsule.userData.clickable = true;
+        droppedCapsule = mesh;
+        droppedCapsule.userData.clickable = false;
         droppedCapsule.userData.result = selectedResult;
         
-        document.getElementById('hint').textContent = '點擊扭蛋打開！';
-        
-        // 等扭蛋停止後啟用點擊
+        // 等扭蛋落地穩定
         setTimeout(() => {
+            droppedCapsule.userData.clickable = true;
+            document.getElementById('hint').textContent = '👆 點擊扭蛋打開！';
             isAnimating = false;
             document.getElementById('gachaBtn').disabled = false;
         }, 2000);
         
-    }, 800);
+    }, 600);
 }
 
-// ============== 點擊扭蛋 ==============
-function onCapsuleClick(event) {
-    if (!droppedCapsule) return;
+// ============== 點擊處理 ==============
+function onCanvasClick(event) {
+    if (!droppedCapsule || !droppedCapsule.userData.clickable) return;
     
-    const mouse = new THREE.Vector2();
-    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    const rect = renderer.domElement.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1
+    );
     
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, camera);
     
     const intersects = raycaster.intersectObject(droppedCapsule, true);
-    
-    if (intersects.length > 0 && droppedCapsule.userData.clickable) {
+    if (intersects.length > 0) {
         openCapsule();
     }
 }
 
 function openCapsule() {
     if (!droppedCapsule) return;
-    
     droppedCapsule.userData.clickable = false;
     
-    // 打開動畫
-    const top = droppedCapsule.children[0];
-    const duration = 500;
-    const startTime = Date.now();
+    // 打開動畫 - 上蓋飛起
+    const topHalf = droppedCapsule.children[0];
+    let frame = 0;
     
     function animateOpen() {
-        const elapsed = Date.now() - startTime;
-        const progress = Math.min(elapsed / duration, 1);
+        frame++;
+        topHalf.position.y += 0.03;
+        topHalf.rotation.x += 0.05;
+        topHalf.rotation.z += 0.02;
         
-        top.position.y = 0.02 + progress * 0.5;
-        top.rotation.z = progress * Math.PI * 0.3;
-        
-        if (progress < 1) {
+        if (frame < 30) {
             requestAnimationFrame(animateOpen);
         } else {
-            // 顯示結果
             showResult(droppedCapsule.userData.result);
         }
     }
-    
     animateOpen();
 }
 
@@ -432,13 +394,12 @@ function showResult(result) {
 function closeResult() {
     document.getElementById('resultModal').classList.remove('show');
     
-    // 移除掉落的扭蛋
     if (droppedCapsule) {
         scene.remove(droppedCapsule);
-        if (droppedCapsuleBody) {
-            world.removeBody(droppedCapsuleBody);
-        }
         droppedCapsule = null;
+    }
+    if (droppedCapsuleBody) {
+        world.removeBody(droppedCapsuleBody);
         droppedCapsuleBody = null;
     }
     
@@ -448,9 +409,9 @@ function closeResult() {
 function updateHint() {
     const hint = document.getElementById('hint');
     if (capsuleMeshes.length === 0) {
-        hint.textContent = '扭蛋機空了！請補充扭蛋';
+        hint.textContent = '扭蛋機空了！點右上角 ⚙️ 補充';
     } else {
-        hint.textContent = `剩餘 ${capsuleMeshes.length} 顆扭蛋`;
+        hint.textContent = `剩餘 ${capsuleMeshes.length} 顆`;
     }
 }
 
@@ -458,16 +419,17 @@ function updateHint() {
 function animate() {
     requestAnimationFrame(animate);
     
-    // 更新物理
-    world.step(1/60);
+    // 物理更新
+    world.step(1 / 60);
     
-    // 同步視覺與物理
+    // 同步 Three.js 與 Cannon.js
     for (let i = 0; i < capsuleMeshes.length; i++) {
-        capsuleMeshes[i].position.copy(capsuleBodies[i].position);
-        capsuleMeshes[i].quaternion.copy(capsuleBodies[i].quaternion);
+        if (capsuleBodies[i]) {
+            capsuleMeshes[i].position.copy(capsuleBodies[i].position);
+            capsuleMeshes[i].quaternion.copy(capsuleBodies[i].quaternion);
+        }
     }
     
-    // 同步掉落的扭蛋
     if (droppedCapsule && droppedCapsuleBody) {
         droppedCapsule.position.copy(droppedCapsuleBody.position);
         droppedCapsule.quaternion.copy(droppedCapsuleBody.quaternion);
@@ -479,12 +441,8 @@ function animate() {
 // ============== 選項管理 ==============
 function loadOptions() {
     const saved = localStorage.getItem('dinnerOptions3D');
-    if (saved) {
-        options = JSON.parse(saved);
-    } else {
-        options = [...DEFAULT_OPTIONS];
-        saveOptions();
-    }
+    options = saved ? JSON.parse(saved) : [...DEFAULT_OPTIONS];
+    saveOptions();
 }
 
 function saveOptions() {
@@ -493,61 +451,43 @@ function saveOptions() {
 
 function renderOptionsList() {
     const list = document.getElementById('optionsList');
-    
     if (options.length === 0) {
-        list.innerHTML = `
-            <div class="empty-state">
-                <div class="emoji">🍽️</div>
-                <p>還沒有任何選項</p>
-            </div>
-        `;
+        list.innerHTML = '<div class="empty-state"><div class="emoji">🍽️</div><p>沒有選項</p></div>';
         return;
     }
-    
-    list.innerHTML = options.map((opt, index) => `
+    list.innerHTML = options.map((opt, i) => `
         <li>
-            <span class="option-text">${escapeHtml(opt)}</span>
+            <span class="option-text">${opt}</span>
             <div class="option-actions">
-                <button class="edit-btn" data-index="${index}">✏️</button>
-                <button class="delete-btn" data-index="${index}">🗑️</button>
+                <button class="edit-btn" data-index="${i}">✏️</button>
+                <button class="delete-btn" data-index="${i}">🗑️</button>
             </div>
         </li>
     `).join('');
 }
 
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
 function addOption() {
     const input = document.getElementById('newOption');
-    const value = input.value.trim();
-    
-    if (!value) return;
-    if (options.includes(value)) {
-        alert('這個選項已經存在了！');
-        return;
-    }
-    
-    options.push(value);
+    const val = input.value.trim();
+    if (!val) return;
+    if (options.includes(val)) { alert('已存在！'); return; }
+    options.push(val);
     saveOptions();
     renderOptionsList();
     input.value = '';
 }
 
-function deleteOption(index) {
-    if (confirm(`確定要刪除「${options[index]}」嗎？`)) {
-        options.splice(index, 1);
+function deleteOption(i) {
+    if (confirm(`刪除「${options[i]}」？`)) {
+        options.splice(i, 1);
         saveOptions();
         renderOptionsList();
     }
 }
 
-function openEditModal(index) {
-    editingIndex = index;
-    document.getElementById('editInput').value = options[index];
+function openEditModal(i) {
+    editingIndex = i;
+    document.getElementById('editInput').value = options[i];
     document.getElementById('editModal').classList.add('show');
 }
 
@@ -557,76 +497,60 @@ function closeEditModal() {
 }
 
 function saveEdit() {
-    const value = document.getElementById('editInput').value.trim();
-    if (!value) return;
-    
-    if (options.includes(value) && options[editingIndex] !== value) {
-        alert('這個選項已經存在了！');
-        return;
-    }
-    
-    options[editingIndex] = value;
+    const val = document.getElementById('editInput').value.trim();
+    if (!val) return;
+    options[editingIndex] = val;
     saveOptions();
     renderOptionsList();
     closeEditModal();
 }
 
 function loadDefaults() {
-    if (confirm('這會清除目前所有選項並載入預設值，確定嗎？')) {
+    if (confirm('載入預設選項？')) {
         options = [...DEFAULT_OPTIONS];
         saveOptions();
         renderOptionsList();
     }
 }
 
-// ============== 事件監聽 ==============
-function setupEventListeners() {
-    // 扭蛋按鈕
+// ============== UI 設定 ==============
+function setupUI() {
+    renderOptionsList();
+    
     document.getElementById('gachaBtn').addEventListener('click', pullGacha);
     
-    // 設定面板
     document.getElementById('settingsBtn').addEventListener('click', () => {
         document.getElementById('settingsPanel').classList.add('show');
     });
+    
     document.getElementById('closeSettings').addEventListener('click', () => {
         document.getElementById('settingsPanel').classList.remove('show');
     });
     
-    // 新增選項
     document.getElementById('addOptionBtn').addEventListener('click', addOption);
-    document.getElementById('newOption').addEventListener('keypress', (e) => {
+    document.getElementById('newOption').addEventListener('keypress', e => {
         if (e.key === 'Enter') addOption();
     });
     
-    // 選項列表事件委派
-    document.getElementById('optionsList').addEventListener('click', (e) => {
+    document.getElementById('optionsList').addEventListener('click', e => {
         const btn = e.target.closest('button');
         if (!btn) return;
-        const index = parseInt(btn.dataset.index);
-        if (btn.classList.contains('edit-btn')) openEditModal(index);
-        if (btn.classList.contains('delete-btn')) deleteOption(index);
+        const i = parseInt(btn.dataset.index);
+        if (btn.classList.contains('edit-btn')) openEditModal(i);
+        if (btn.classList.contains('delete-btn')) deleteOption(i);
     });
     
-    // 編輯對話框
     document.getElementById('saveEdit').addEventListener('click', saveEdit);
     document.getElementById('cancelEdit').addEventListener('click', closeEditModal);
-    document.getElementById('editInput').addEventListener('keypress', (e) => {
+    document.getElementById('editInput').addEventListener('keypress', e => {
         if (e.key === 'Enter') saveEdit();
     });
     
-    // 預設/補充
     document.getElementById('loadDefaults').addEventListener('click', loadDefaults);
     document.getElementById('refillMachine').addEventListener('click', fillCapsules);
     
-    // 結果
     document.getElementById('closeResult').addEventListener('click', closeResult);
-    document.getElementById('resultModal').addEventListener('click', (e) => {
-        if (e.target === document.getElementById('resultModal')) closeResult();
+    document.getElementById('resultModal').addEventListener('click', e => {
+        if (e.target.id === 'resultModal') closeResult();
     });
-    
-    // 點擊扭蛋
-    renderer.domElement.addEventListener('click', onCapsuleClick);
 }
-
-// ============== 啟動 ==============
-init();
