@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D 晚餐扭蛋機 🎰</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- 3D Canvas -->
+        <div id="canvas-container"></div>
+        
+        <!-- UI Overlay -->
+        <div class="ui-overlay">
+            <header>
+                <h1>🍽️ 3D 晚餐扭蛋機</h1>
+                <button class="settings-btn" id="settingsBtn">⚙️</button>
+            </header>
+            
+            <div class="bottom-ui">
+                <button class="gacha-btn" id="gachaBtn">
+                    <span>🎰 扭！</span>
+                </button>
+                <p class="hint" id="hint">點擊扭蛋按鈕開始</p>
+            </div>
+        </div>
+        
+        <!-- 結果顯示 -->
+        <div class="result-modal" id="resultModal">
+            <div class="result-content">
+                <div class="result-emoji">🎉</div>
+                <div class="result-text" id="resultText"></div>
+                <button class="close-result" id="closeResult">好！</button>
+            </div>
+        </div>
+
+        <!-- 設定面板 -->
+        <div class="settings-panel" id="settingsPanel">
+            <div class="settings-content">
+                <div class="settings-header">
+                    <h2>🎯 選項設定</h2>
+                    <button class="close-btn" id="closeSettings">✕</button>
+                </div>
+                
+                <div class="add-option">
+                    <input type="text" id="newOption" placeholder="輸入新選項..." maxlength="20">
+                    <button id="addOptionBtn">➕</button>
+                </div>
+
+                <ul class="options-list" id="optionsList"></ul>
+
+                <div class="settings-actions">
+                    <button id="loadDefaults">🔄 載入預設</button>
+                    <button id="refillMachine">🎱 補充扭蛋</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 編輯對話框 -->
+        <div class="edit-modal" id="editModal">
+            <div class="edit-modal-content">
+                <h3>✏️ 編輯選項</h3>
+                <input type="text" id="editInput" maxlength="20">
+                <div class="edit-actions">
+                    <button id="saveEdit">💾 儲存</button>
+                    <button id="cancelEdit" class="cancel-btn">取消</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

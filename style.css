@@ -1,0 +1,421 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+    overflow: hidden;
+    background: #1a1a2e;
+}
+
+#canvas-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+}
+
+canvas {
+    display: block;
+    cursor: grab;
+}
+
+canvas:active {
+    cursor: grabbing;
+}
+
+.ui-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.ui-overlay > * {
+    pointer-events: auto;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+}
+
+header h1 {
+    color: white;
+    font-size: 1.5rem;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+.settings-btn {
+    background: rgba(255,255,255,0.2);
+    border: none;
+    border-radius: 50%;
+    width: 45px;
+    height: 45px;
+    font-size: 1.3rem;
+    cursor: pointer;
+    transition: all 0.3s;
+    backdrop-filter: blur(10px);
+}
+
+.settings-btn:hover {
+    background: rgba(255,255,255,0.4);
+    transform: rotate(90deg);
+}
+
+.bottom-ui {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+
+.gacha-btn {
+    background: linear-gradient(145deg, #ff6b6b, #ee5a5a);
+    border: none;
+    border-radius: 50px;
+    padding: 18px 50px;
+    font-size: 1.4rem;
+    color: white;
+    cursor: pointer;
+    box-shadow: 0 8px 25px rgba(238,90,90,0.4);
+    transition: all 0.3s;
+}
+
+.gacha-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 35px rgba(238,90,90,0.5);
+}
+
+.gacha-btn:active {
+    transform: translateY(0);
+}
+
+.gacha-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.hint {
+    color: rgba(255,255,255,0.7);
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+/* Result Modal */
+.result-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.8);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+    backdrop-filter: blur(10px);
+}
+
+.result-modal.show {
+    display: flex;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.result-content {
+    background: white;
+    padding: 40px 50px;
+    border-radius: 25px;
+    text-align: center;
+    animation: popIn 0.4s ease;
+}
+
+@keyframes popIn {
+    0% { transform: scale(0.5); opacity: 0; }
+    70% { transform: scale(1.1); }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.result-emoji {
+    font-size: 4rem;
+    margin-bottom: 15px;
+}
+
+.result-text {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #2c3e50;
+    margin-bottom: 25px;
+}
+
+.close-result {
+    background: linear-gradient(145deg, #4ecdc4, #44a08d);
+    border: none;
+    border-radius: 30px;
+    padding: 12px 40px;
+    font-size: 1.1rem;
+    color: white;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.close-result:hover {
+    transform: scale(1.05);
+}
+
+/* Settings Panel */
+.settings-panel {
+    position: fixed;
+    top: 0;
+    right: -100%;
+    width: 100%;
+    max-width: 380px;
+    height: 100%;
+    background: #fff;
+    z-index: 200;
+    transition: right 0.3s ease;
+    box-shadow: -5px 0 30px rgba(0,0,0,0.3);
+}
+
+.settings-panel.show {
+    right: 0;
+}
+
+.settings-content {
+    padding: 20px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.settings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #eee;
+}
+
+.settings-header h2 {
+    color: #2c3e50;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #999;
+}
+
+.close-btn:hover {
+    color: #ff6b6b;
+}
+
+.add-option {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.add-option input {
+    flex: 1;
+    padding: 12px 15px;
+    border: 2px solid #ddd;
+    border-radius: 10px;
+    font-size: 1rem;
+}
+
+.add-option input:focus {
+    outline: none;
+    border-color: #4ecdc4;
+}
+
+.add-option button {
+    padding: 12px 18px;
+    background: #4ecdc4;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 1.1rem;
+}
+
+.options-list {
+    list-style: none;
+    flex: 1;
+    overflow-y: auto;
+    margin-bottom: 20px;
+}
+
+.options-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    margin-bottom: 8px;
+}
+
+.option-text {
+    font-size: 1rem;
+    color: #2c3e50;
+}
+
+.option-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.option-actions button {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.edit-btn { background: #ffe66d; }
+.delete-btn { background: #ff6b6b; color: white; }
+
+.settings-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.settings-actions button {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 0.95rem;
+}
+
+.settings-actions button:first-child {
+    background: #6c757d;
+    color: white;
+}
+
+.settings-actions button:last-child {
+    background: #9b59b6;
+    color: white;
+}
+
+/* Edit Modal */
+.edit-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 300;
+}
+
+.edit-modal.show {
+    display: flex;
+}
+
+.edit-modal-content {
+    background: white;
+    padding: 30px;
+    border-radius: 20px;
+    width: 90%;
+    max-width: 320px;
+}
+
+.edit-modal-content h3 {
+    margin-bottom: 20px;
+    color: #2c3e50;
+}
+
+.edit-modal-content input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #ddd;
+    border-radius: 10px;
+    font-size: 1rem;
+    margin-bottom: 20px;
+}
+
+.edit-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.edit-actions button {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+}
+
+.edit-actions button:first-child {
+    background: #4ecdc4;
+    color: white;
+}
+
+.edit-actions .cancel-btn {
+    background: #e9ecef;
+    color: #2c3e50;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #999;
+}
+
+.empty-state .emoji {
+    font-size: 3rem;
+    margin-bottom: 10px;
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+    header h1 {
+        font-size: 1.2rem;
+    }
+    
+    .gacha-btn {
+        padding: 15px 40px;
+        font-size: 1.2rem;
+    }
+    
+    .result-content {
+        padding: 30px;
+        margin: 20px;
+    }
+    
+    .result-text {
+        font-size: 1.6rem;
+    }
+}
